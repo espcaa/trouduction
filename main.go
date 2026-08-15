@@ -149,5 +149,9 @@ func (b *Bot) handleInteractivity(evt *socketmode.Event, client *socketmode.Clie
 			log.Printf("handling emoji interactivity for value %q", action.Value)
 			b.HandleEmojiAddInteractivity(payload)
 		}
+		if strings.HasPrefix(action.ActionID, "cancel&") {
+			log.Printf("handling cancel interactivity for value %q", action.Value)
+			b.HandleCancelInteractivity(payload)
+		}
 	}
 }

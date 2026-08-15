@@ -203,6 +203,23 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 		)
 	}
 
+	// add a cancel button at the end
+	cancelButton := slack.NewButtonBlockElement(
+		"cancel&"+StripColons(emoji),
+		"cancel",
+		slack.NewTextBlockObject("plain_text", "cancel", false, false),
+	)
+	cancelButton.Style = slack.StyleDanger
+
+	blocks.BlockSet = append(blocks.BlockSet,
+		slack.NewDividerBlock(),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "or cancel this operation if you don't want to add any of these.", false, false),
+			nil,
+			slack.NewAccessory(cancelButton),
+		),
+	)
+
 	err = SendResponseURLMessage(command.ResponseURL, &blocks, true, false)
 	if err != nil {
 		log.Printf("error sending ephemeral message: %v", err)

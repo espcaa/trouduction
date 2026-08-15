@@ -50,3 +50,33 @@ func (b *Bot) HandleEmojiAddInteractivity(payload slack.InteractionCallback) {
 	}
 
 }
+
+func (b *Bot) HandleCancelInteractivity(payload slack.InteractionCallback) {
+	action := payload.ActionCallback.BlockActions[0]
+
+	parts := strings.SplitN(action.ActionID, "&", 2)
+	if len(parts) < 2 {
+		log.Printf("unexpected action id %q: want cancel&<emoji>", action.ActionID)
+		return
+	}
+	emoji := parts[1]
+
+	log.Printf("user %s cancelled adding emoji %q", payload.User.ID, emoji)
+
+	// delete the original message & send a new message to the user saying the operation was cancelled
+	blocks := slack.Blocks{
+		BlockSet: []slack.Block{
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn",
+					":blobhaj_party: successfully cancelled trouducting emoji `"+emoji+"` :"+emoji+": !!",
+					false, false),
+				nil, nil,
+			),
+		},
+	}
+
+	err := SendResponseURLMessage(payload.ResponseURL, &blocks, true, true)
+	if err != nil {
+		log.Printf("error sending ephemeral message: %v", err)
+	}
+}
