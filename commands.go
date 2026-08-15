@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 
 	_ "embed"
@@ -13,16 +14,22 @@ import (
 //go:embed prompt.txt
 var aiSystemPrompt string
 
-func SendResponseURLMessage(command slack.SlashCommand, blocks *slack.Blocks, ephemeral bool) error {
+type GptJson struct {
+	Options []string `json:"options"`
+	Ok      bool     `json:"ok"`
+}
+
+func SendResponseURLMessage(url string, blocks *slack.Blocks, ephemeral bool, replaceOriginal bool) error {
 	response := slack.WebhookMessage{
-		Blocks:       blocks,
-		ResponseType: "ephemeral",
+		Blocks:          blocks,
+		ResponseType:    "ephemeral",
+		ReplaceOriginal: replaceOriginal,
 	}
 	if !ephemeral {
 		response.ResponseType = "in_channel"
 	}
 
-	err := slack.PostWebhook(command.ResponseURL, &response)
+	err := slack.PostWebhook(url, &response)
 	return err
 }
 
@@ -40,7 +47,7 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 				),
 			},
 		}
-		err := SendResponseURLMessage(command, &blocks, true)
+		err := SendResponseURLMessage(command.ResponseURL, &blocks, true, false)
 		if err != nil {
 			log.Printf("error sending ephemeral message: %v", err)
 		}
@@ -57,7 +64,7 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 				),
 			},
 		}
-		err := SendResponseURLMessage(command, &blocks, true)
+		err := SendResponseURLMessage(command.ResponseURL, &blocks, true, false)
 
 		if err != nil {
 			log.Printf("error sending ephemeral message: %v", err)
@@ -78,7 +85,7 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 				),
 			},
 		}
-		err := SendResponseURLMessage(command, &blocks, true)
+		err := SendResponseURLMessage(command.ResponseURL, &blocks, true, false)
 
 		if err != nil {
 			log.Printf("error sending ephemeral message: %v", err)
@@ -96,7 +103,7 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 			),
 		},
 	}
-	err = SendResponseURLMessage(command, &loadMessageBlocks, true)
+	err = SendResponseURLMessage(command.ResponseURL, &loadMessageBlocks, true, false)
 	if err != nil {
 		log.Printf("error sending ephemeral message: %v", err)
 		return
@@ -123,18 +130,93 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 
 	responseContent := aiResponse.GetContent()
 
-	responseBlocks := slack.Blocks{
+	// try to parse it
+	var gptJson GptJson
+	err = json.Unmarshal([]byte(responseContent), &gptJson)
+	if err != nil {
+		log.Printf("error parsing ai response: %v", err)
+		// log the response content for debugging
+		log.Printf("ai response content: %s", responseContent)
+		// send a message to the user saying that the ai response was invalid
+		blocks := slack.Blocks{
+			BlockSet: []slack.Block{
+				slack.NewSectionBlock(
+					slack.NewTextBlockObject("mrkdwn", "uh looks like our clanker had a stroke. try again. "+err.Error(), false, false),
+					nil,
+					nil,
+				),
+			},
+		}
+		err := SendResponseURLMessage(command.ResponseURL, &blocks, true, false)
+		if err != nil {
+			log.Printf("error sending ephemeral message: %v", err)
+		}
+		return
+	}
+
+	if !gptJson.Ok {
+		blocks := slack.Blocks{
+			BlockSet: []slack.Block{
+				slack.NewSectionBlock(
+					slack.NewTextBlockObject("mrkdwn", "uhm we got a message from our clanker saying that this emoji is not trouductable. try again if you think this is a mistake.", false, false),
+					nil,
+					nil,
+				),
+			},
+		}
+		err := SendResponseURLMessage(command.ResponseURL, &blocks, true, false)
+		if err != nil {
+			log.Printf("error sending ephemeral message: %v", err)
+		}
+		return
+	}
+
+	// now we have choices :3
+	// send a message to the user with the choices
+
+	blocks := slack.Blocks{
 		BlockSet: []slack.Block{
 			slack.NewSectionBlock(
-				slack.NewTextBlockObject("mrkdwn", responseContent, false, false),
-				nil,
-				nil,
+				slack.NewTextBlockObject("mrkdwn",
+					":blobhaj_party: here are some possible trouductions for `"+emoji+"` "+emoji+" !!",
+					false, false),
+				nil, nil,
 			),
+			slack.NewDividerBlock(),
 		},
 	}
 
-	err = SendResponseURLMessage(command, &responseBlocks, false)
-	if err != nil {
-		log.Printf("error sending in channel message: %v", err)
+	for _, option := range gptJson.Options {
+		button := slack.NewButtonBlockElement(
+			"emoji&"+StripColons(emoji)+"&"+option,
+			option, // put the value in Value, not the action_id
+			slack.NewTextBlockObject("plain_text", "create", false, false),
+		)
+		button.Style = slack.StylePrimary
+
+		blocks.BlockSet = append(blocks.BlockSet,
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", "*"+option+"*", false, false),
+				nil,
+				slack.NewAccessory(button),
+			),
+		)
 	}
+
+	err = SendResponseURLMessage(command.ResponseURL, &blocks, true, false)
+	if err != nil {
+		log.Printf("error sending ephemeral message: %v", err)
+	}
+
+	// done now?
+}
+
+func StripColons(emoji string) string {
+	if len(emoji) < 2 {
+		return emoji
+	}
+	if emoji[0] == ':' && emoji[len(emoji)-1] == ':' {
+		return emoji[1 : len(emoji)-1]
+	}
+	return emoji
 }
