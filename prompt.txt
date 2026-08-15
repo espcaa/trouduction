@@ -45,6 +45,16 @@ example output:
   "ok": true
 }
 
+example input: :sob-wx:
+{
+  "options": [
+    "pleur-wx",
+    "pleurer-wx",
+    "sanglot-wx",
+  ]
+  "ok": true
+}
+
 if the emoji name is not recognized or cannot be translated, respond with:
 {
   "options": [],
