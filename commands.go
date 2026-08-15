@@ -94,6 +94,19 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 		return
 	}
 
+	// take everything after the emoji as context for the ai & merge all args into a single string
+	if len(args) > 1 {
+		context := ""
+		for _, arg := range args[1:] {
+			context += arg + " "
+		}
+		command.Text = emoji + " " + context
+	} else {
+		command.Text = emoji
+	}
+
+	// send a message to the user saying that we're working on it
+
 	loadMessageBlocks := slack.Blocks{
 		BlockSet: []slack.Block{
 			slack.NewSectionBlock(
@@ -118,8 +131,13 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 		},
 		{
 			Role:    "user",
-			Content: emoji,
+			Content: "trouduct this emoji: " + emoji,
 		},
+	}
+
+	// if theres context, add it to the conversation
+	if len(args) > 1 {
+		aiConversation[1].Content += "\n\ni have some context for you! (please keep in mind): " + command.Text[len(emoji)+1:]
 	}
 
 	aiResponse, err := b.State.AiClient.Complete(aiConversation)
@@ -217,6 +235,16 @@ func (b *Bot) handleTrouductionCommand(command slack.SlashCommand) {
 			slack.NewTextBlockObject("mrkdwn", "or cancel this operation if you don't want to add any of these.", false, false),
 			nil,
 			slack.NewAccessory(cancelButton),
+		),
+	)
+
+	// add a separator & italic note
+	blocks.BlockSet = append(blocks.BlockSet,
+		slack.NewDividerBlock(),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "_note: you can continue writing after the emoji name to give context to the clanker! e.g. `/trouduction :blobhaj_party: blobhaj could be translated to requinrond`_", false, false),
+			nil,
+			nil,
 		),
 	)
 
